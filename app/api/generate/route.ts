@@ -217,7 +217,7 @@ export async function POST(req: Request) {
 
         // Fill in any missing slides
         if (!output.slides || output.slides.length < 12) {
-          const existingIds = new Set(output.slides?.map((s: PitchDeckSlide) => s.id) || [])
+          const existingIds = new Set<string>(output.slides?.map((s: PitchDeckSlide) => s.id) || [])
           const requiredIds = ['intro', 'problem', 'solution', 'product', 'market', 'businessModel', 'traction', 'competition', 'gtm', 'financials', 'team', 'ask']
           for (const id of requiredIds) {
             if (!existingIds.has(id)) {
