@@ -12,6 +12,7 @@ import {
   useIsGenerating,
   useGenerationError,
   useGenerated,
+  useUserId,
 } from '@/lib/store'
 import { QUESTIONS } from '@/lib/questions'
 import { buildAnswerSummary } from '@/lib/utils'
@@ -30,6 +31,7 @@ export default function QuestionnairePage() {
     setGenerated,
     setIsGenerating,
     setGenerationError,
+    setSessionId,
   } = useStore()
 
   const answers = useAnswers()
@@ -39,6 +41,7 @@ export default function QuestionnairePage() {
   const isGenerating = useIsGenerating()
   const generationError = useGenerationError()
   const generated = useGenerated()
+  const userId = useUserId()
 
   const [isImprovingAnswer, setIsImprovingAnswer] = useState(false)
   const [improveError, setImproveError] = useState<string | null>(null)
@@ -103,6 +106,8 @@ export default function QuestionnairePage() {
     setIsGenerating(true)
     setGenerationError(null)
 
+    let completed = false
+
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -126,16 +131,43 @@ export default function QuestionnairePage() {
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
-          const event = JSON.parse(line.slice(6))
+          try {
+            const event = JSON.parse(line.slice(6))
 
-          if (event.type === 'done') {
-            setGenerated(event.output)
-            router.push('/output')
-          } else if (event.type === 'error') {
-            setGenerationError(event.message)
-            setIsGenerating(false)
+            if (event.type === 'done') {
+              completed = true
+              setGenerated(event.output)
+              // Auto-save to Supabase if logged in
+              if (userId) {
+                fetch('/api/sessions', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    answers,
+                    branding,
+                    generated: event.output,
+                    mode,
+                    companyName: answers.company_name || null,
+                  }),
+                })
+                  .then((r) => r.json())
+                  .then((d) => { if (d.id) setSessionId(d.id) })
+                  .catch(() => {}) // non-critical
+              }
+              router.push('/output')
+            } else if (event.type === 'error') {
+              setGenerationError(event.message)
+              setIsGenerating(false)
+            }
+          } catch {
+            // ignore malformed SSE lines
           }
         }
+      }
+
+      if (!completed) {
+        setGenerationError('Generation did not complete. Please try again.')
+        setIsGenerating(false)
       }
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'An unexpected error occurred')

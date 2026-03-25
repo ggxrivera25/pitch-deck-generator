@@ -182,6 +182,12 @@ export async function POST(req: Request) {
 
   const readable = new ReadableStream({
     async start(controller) {
+      // Time-based keepalive every 4s — keeps the connection alive while
+      // Gemini is thinking/buffering (structured output often buffers fully before streaming).
+      const keepalive = setInterval(() => {
+        try { sseEvent(controller, { type: 'token', content: '' }) } catch { /* stream closing */ }
+      }, 4000)
+
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
         const model = genAI.getGenerativeModel({
@@ -192,27 +198,25 @@ export async function POST(req: Request) {
           },
         })
 
-        // Stream to keep Netlify connection alive, then use aggregated
-        // result.response for clean JSON (avoids thinking-token contamination)
         const result = await model.generateContentStream(prompt)
 
-        let chunkCount = 0
+        let fullText = ''
         for await (const chunk of result.stream) {
-          chunkCount++
-          // Periodic keepalive so Netlify doesn't close the connection
-          if (chunkCount % 5 === 0) {
-            sseEvent(controller, { type: 'token', content: '' })
-          }
+          fullText += chunk.text()
         }
 
-        // result.response is the aggregated final response — clean of thinking tokens
-        const fullText = (await result.response).text()
+        clearInterval(keepalive)
+
+        // Strip any thinking-token preamble before the JSON object
+        const jsonStart = fullText.indexOf('{')
+        const jsonText = jsonStart >= 0 ? fullText.slice(jsonStart) : fullText
 
         let output: GeneratedOutput
         try {
-          output = JSON.parse(fullText) as GeneratedOutput
+          output = JSON.parse(jsonText) as GeneratedOutput
         } catch {
-          sseEvent(controller, { type: 'error', message: 'Failed to parse output. Please try again.' })
+          sseEvent(controller, { type: 'error', message: 'Failed to parse AI output. Please try again.' })
+          await new Promise<void>((r) => setTimeout(r, 50))
           controller.close()
           return
         }
@@ -242,11 +246,17 @@ export async function POST(req: Request) {
         }
 
         sseEvent(controller, { type: 'done', output })
+        // Yield to the event loop so the done event is flushed before close
+        await new Promise<void>((r) => setTimeout(r, 50))
         controller.close()
       } catch (error) {
+        clearInterval(keepalive)
         console.error('Generation error:', error)
         const message = error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
-        sseEvent(controller, { type: 'error', message })
+        try {
+          sseEvent(controller, { type: 'error', message })
+          await new Promise<void>((r) => setTimeout(r, 50))
+        } catch { /* ignore if stream already closed */ }
         controller.close()
       }
     },

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Edit2, Zap, ChevronDown, ChevronUp, Layout } from 'lucide-react'
-import { useStore, useGenerated, useBranding, useAnswers, useMode } from '@/lib/store'
+import { ArrowLeft, Edit2, Zap, ChevronDown, ChevronUp, Layout, Save, Share2, Check, Loader2, User } from 'lucide-react'
+import { useStore, useGenerated, useBranding, useAnswers, useMode, useUserId, useSessionId } from '@/lib/store'
 import { SlideCard } from '@/components/SlideCard'
 import { TalkTrackPanel } from '@/components/TalkTrackPanel'
 import { ExportButtons } from '@/components/ExportButtons'
@@ -17,11 +17,16 @@ export default function OutputPage() {
   const branding = useBranding()
   const answers = useAnswers()
   const mode = useMode()
-  const { setMode, setIsGenerating, setGenerated, setGenerationError } = useStore()
+  const userId = useUserId()
+  const sessionId = useSessionId()
+  const { setMode, setIsGenerating, setGenerated, setGenerationError, setSessionId } = useStore()
 
   const [activeTab, setActiveTab] = useState<OutputTab>('deck')
   const [allExpanded, setAllExpanded] = useState(true)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [shareUrl, setShareUrl] = useState<string | null>(sessionId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/decks/${sessionId}` : null)
+  const [copied, setCopied] = useState(false)
 
   const companyName = answers.company_name || 'Your Company'
 
@@ -33,6 +38,43 @@ export default function OutputPage() {
   }, [generated, router])
 
   if (!generated) return null
+
+  const handleSave = async () => {
+    if (!userId) {
+      router.push('/auth')
+      return
+    }
+    setIsSaving(true)
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId || undefined,
+          answers,
+          branding,
+          generated,
+          mode,
+          companyName: answers.company_name || null,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSessionId(data.id)
+        const url = `${window.location.origin}/decks/${data.id}`
+        setShareUrl(url)
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCopyShare = () => {
+    if (!shareUrl) return
+    navigator.clipboard.writeText(shareUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const handleRegenerate = async () => {
     setIsRegenerating(true)
@@ -131,6 +173,34 @@ export default function OutputPage() {
           {/* Actions */}
           <div className="flex items-center gap-2 ml-auto">
             <ModeToggle mode={mode} onChange={setMode} size="sm" />
+            {!userId && (
+              <button
+                onClick={() => router.push('/auth')}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <User size={14} />
+                <span className="hidden sm:inline">Login to save</span>
+              </button>
+            )}
+            {userId && !shareUrl && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 px-3 py-1.5 rounded-lg hover:bg-brand-50 transition-all disabled:opacity-60"
+              >
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                <span className="hidden sm:inline">{isSaving ? 'Saving...' : 'Save'}</span>
+              </button>
+            )}
+            {shareUrl && (
+              <button
+                onClick={handleCopyShare}
+                className="flex items-center gap-1.5 text-sm font-medium text-green-600 hover:text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-50 transition-all"
+              >
+                {copied ? <Check size={14} /> : <Share2 size={14} />}
+                <span className="hidden sm:inline">{copied ? 'Copied!' : 'Share'}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

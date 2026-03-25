@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { AuthInit } from '@/components/AuthInit'
 
 export const metadata: Metadata = {
   title: 'PitchDeck Generator — From Idea to Investor-Ready in 30 Minutes',
@@ -25,6 +26,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="min-h-screen bg-gray-50">
+        <AuthInit />
         {children}
       </body>
     </html>
