@@ -1,20 +1,13 @@
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export async function POST(req: Request) {
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured.' }, { status: 500 })
+  }
+
   try {
     const { questionId, question, currentAnswer, context, mode } = await req.json()
-
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY is not configured.' },
-        { status: 500 }
-      )
-    }
 
     const prompt = `You are an expert startup pitch coach helping a founder improve their pitch deck answer.
 
@@ -41,46 +34,14 @@ Return ONLY the improved answer text — no preamble, no explanation. Just write
 
 If the current answer is empty, write a strong example answer for this type of company/context.`
 
-    const stream = client.messages.stream({
-      model: 'claude-opus-4-6',
-      max_tokens: 1000,
-      thinking: { type: 'adaptive' },
-      messages: [{ role: 'user', content: prompt }],
-    })
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const result = await model.generateContent(prompt)
+    const improvedAnswer = result.response.text().trim()
 
-    const response = await stream.finalMessage()
-
-    const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === 'text'
-    )
-
-    if (!textBlock) {
-      return NextResponse.json(
-        { error: 'No improvement generated. Please try again.' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      improvedAnswer: textBlock.text.trim(),
-      questionId,
-    })
+    return NextResponse.json({ improvedAnswer, questionId })
   } catch (error) {
     console.error('Improve answer error:', error)
-
-    if (error instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: 'Invalid API key.' }, { status: 401 })
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return NextResponse.json(
-        { error: 'Rate limit hit. Please wait and try again.' },
-        { status: 429 }
-      )
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to improve answer. Please try again.' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to improve answer. Please try again.' }, { status: 500 })
   }
 }

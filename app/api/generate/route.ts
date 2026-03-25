@@ -1,69 +1,76 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
 import type { BrandingProfile, GeneratedOutput, PitchDeckSlide } from '@/lib/types'
-import { buildAnswerSummary, extractJSON } from '@/lib/utils'
+import { buildAnswerSummary } from '@/lib/utils'
 
-// Allow up to 60s for generation (Vercel Pro: set maxDuration to 60 in project settings)
 export const maxDuration = 60
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+// SSE helpers
+const encoder = new TextEncoder()
+function sseEvent(controller: ReadableStreamDefaultController, data: object) {
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+}
 
-// JSON Schema for the pitch deck tool
-const pitchDeckInputSchema = {
-  type: 'object' as const,
+const pitchDeckSchema = {
+  type: SchemaType.OBJECT,
   properties: {
     talkTrack: {
-      type: 'string',
+      type: SchemaType.STRING,
       description: '3-5 minute speaker script (450-750 words). Conversational, persuasive, founder-authentic tone.',
+      nullable: false,
     },
     slides: {
-      type: 'array',
+      type: SchemaType.ARRAY,
       description: 'Exactly 12 slides in order: intro, problem, solution, product, market, businessModel, traction, competition, gtm, financials, team, ask',
       items: {
-        type: 'object',
+        type: SchemaType.OBJECT,
         properties: {
           id: {
-            type: 'string',
-            enum: ['intro', 'problem', 'solution', 'product', 'market', 'businessModel', 'traction', 'competition', 'gtm', 'financials', 'team', 'ask'],
+            type: SchemaType.STRING,
+            description: 'Slide identifier — one of: intro, problem, solution, product, market, businessModel, traction, competition, gtm, financials, team, ask',
+            nullable: false,
           },
-          title: { type: 'string', description: 'Short, punchy slide title (4-8 words max)' },
+          title: {
+            type: SchemaType.STRING,
+            description: 'Short, punchy slide title (4-8 words max)',
+            nullable: false,
+          },
           bullets: {
-            type: 'array',
-            items: { type: 'string' },
-            description: '3-5 bullet points. Slide 8 (competition) must contain a markdown table. Slide 10 (financials) must contain a markdown table: Year | Revenue | Costs | Profit.',
+            type: SchemaType.ARRAY,
+            description: '3-5 bullet points. Slide competition must contain a markdown table. Slide financials must contain a markdown table: Year | Revenue | Costs | Profit.',
+            items: { type: SchemaType.STRING },
           },
-          suggestedVisual: { type: 'string', description: 'Specific visual element recommendation (e.g., "Split screen: customer photo on left, pain stat on right")' },
+          suggestedVisual: {
+            type: SchemaType.STRING,
+            description: 'Specific visual element recommendation',
+            nullable: false,
+          },
           designNotes: {
-            type: 'object',
+            type: SchemaType.OBJECT,
             properties: {
-              layout: { type: 'string', description: 'e.g. "Full bleed hero image with text overlay", "Two-column: icon grid left, text right"' },
-              colorUsage: { type: 'string', description: 'Specific instructions for using the brand colors on this slide' },
-              fontHierarchy: { type: 'string', description: 'e.g. "48px bold headline in primary brand color, 20px regular body"' },
-              logoPlacement: { type: 'string', description: 'Where and how to place the logo on this specific slide' },
-              visualStyle: { type: 'string', description: 'e.g. "High-contrast dark background for impact", "Clean white with data visualization"' },
+              layout: { type: SchemaType.STRING, nullable: false },
+              colorUsage: { type: SchemaType.STRING, nullable: false },
+              fontHierarchy: { type: SchemaType.STRING, nullable: false },
+              logoPlacement: { type: SchemaType.STRING, nullable: false },
+              visualStyle: { type: SchemaType.STRING, nullable: false },
             },
             required: ['layout', 'colorUsage', 'fontHierarchy', 'logoPlacement', 'visualStyle'],
-            additionalProperties: false,
           },
         },
         required: ['id', 'title', 'bullets', 'suggestedVisual', 'designNotes'],
-        additionalProperties: false,
       },
     },
     quickImprovements: {
-      type: 'array',
-      items: { type: 'string' },
+      type: SchemaType.ARRAY,
       description: '4-6 specific, actionable improvements (missing data, weak arguments, vague statements)',
+      items: { type: SchemaType.STRING },
     },
     coachNotes: {
-      type: 'array',
-      items: { type: 'string' },
+      type: SchemaType.ARRAY,
       description: '4-6 insights for workshop facilitators: risks, gaps, follow-up questions, coaching suggestions',
+      items: { type: SchemaType.STRING },
     },
   },
   required: ['talkTrack', 'slides', 'quickImprovements', 'coachNotes'],
-  additionalProperties: false,
 }
 
 function buildBrandingContext(branding: BrandingProfile): string {
@@ -143,27 +150,19 @@ REQUIREMENTS FOR GENERATION:
    - Identify missing data points that weaken the pitch
    - Flag any slides where claims are unsupported
    - Suggest specific questions the founder should be able to answer
-   - Note any logical gaps or inconsistencies
 
 5. COACH NOTES:
    - Insights for workshop facilitators
    - Questions to push the founder deeper
    - Red flags investors will likely probe
-   - Suggestions for practice and delivery
 
 Generate the pitch deck now. Be specific, compelling, and investor-ready.`
 }
 
-// SSE helpers
-const encoder = new TextEncoder()
-function sseEvent(controller: ReadableStreamDefaultController, data: object) {
-  controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
-}
-
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return new Response(
-      `data: ${JSON.stringify({ type: 'error', message: 'ANTHROPIC_API_KEY is not configured.' })}\n\n`,
+      `data: ${JSON.stringify({ type: 'error', message: 'GEMINI_API_KEY is not configured.' })}\n\n`,
       { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
     )
   }
@@ -181,59 +180,39 @@ export async function POST(req: Request) {
   const { answers, branding, mode } = body
   const prompt = buildGenerationPrompt(answers, branding, mode)
 
-  // Return a ReadableStream with SSE events.
-  // This keeps the Netlify/Vercel connection alive for the full generation time.
   const readable = new ReadableStream({
     async start(controller) {
       try {
-        const claudeStream = client.messages.stream({
-          model: 'claude-opus-4-6',
-          max_tokens: 16000,
-          thinking: { type: 'adaptive' },
-          tools: [
-            {
-              name: 'generate_pitch_deck',
-              description: 'Generate a complete, investor-ready pitch deck with talk track, 12 slides, design notes, and coaching feedback.',
-              input_schema: pitchDeckInputSchema,
-            },
-          ],
-          tool_choice: { type: 'tool', name: 'generate_pitch_deck' },
-          messages: [{ role: 'user', content: prompt }],
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+        const model = genAI.getGenerativeModel({
+          model: 'gemini-2.0-flash',
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: pitchDeckSchema,
+          },
         })
 
-        // Forward text tokens so the client can animate a progress counter
-        claudeStream.on('text', (text) => {
-          sseEvent(controller, { type: 'token', content: text })
-        })
+        const result = await model.generateContentStream(prompt)
 
-        const response = await claudeStream.finalMessage()
-
-        // Extract structured output from tool use block
-        const toolUseBlock = response.content.find(
-          (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
-        )
+        let fullText = ''
+        let chunkCount = 0
+        for await (const chunk of result.stream) {
+          const text = chunk.text()
+          fullText += text
+          chunkCount++
+          // Send periodic progress ticks so the UI can animate
+          if (chunkCount % 10 === 0) {
+            sseEvent(controller, { type: 'token', content: text })
+          }
+        }
 
         let output: GeneratedOutput
-
-        if (toolUseBlock) {
-          output = toolUseBlock.input as GeneratedOutput
-        } else {
-          // Fallback: parse JSON from a text block
-          const textBlock = response.content.find(
-            (block): block is Anthropic.TextBlock => block.type === 'text'
-          )
-          if (!textBlock) {
-            sseEvent(controller, { type: 'error', message: 'No output generated. Please try again.' })
-            controller.close()
-            return
-          }
-          try {
-            output = JSON.parse(extractJSON(textBlock.text)) as GeneratedOutput
-          } catch {
-            sseEvent(controller, { type: 'error', message: 'Failed to parse output. Please try again.' })
-            controller.close()
-            return
-          }
+        try {
+          output = JSON.parse(fullText) as GeneratedOutput
+        } catch {
+          sseEvent(controller, { type: 'error', message: 'Failed to parse output. Please try again.' })
+          controller.close()
+          return
         }
 
         // Fill in any missing slides
@@ -264,16 +243,7 @@ export async function POST(req: Request) {
         controller.close()
       } catch (error) {
         console.error('Generation error:', error)
-
-        let message = 'An unexpected error occurred. Please try again.'
-        if (error instanceof Anthropic.AuthenticationError) {
-          message = 'Invalid API key. Check your ANTHROPIC_API_KEY in .env.local.'
-        } else if (error instanceof Anthropic.RateLimitError) {
-          message = 'Rate limit hit. Please wait a moment and try again.'
-        } else if (error instanceof Anthropic.APIError) {
-          message = `API error: ${error.message}`
-        }
-
+        const message = error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
         sseEvent(controller, { type: 'error', message })
         controller.close()
       }
@@ -285,7 +255,7 @@ export async function POST(req: Request) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',  // disable Nginx buffering
+      'X-Accel-Buffering': 'no',
     },
   })
 }
