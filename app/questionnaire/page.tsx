@@ -110,13 +110,36 @@ export default function QuestionnairePage() {
         body: JSON.stringify({ answers, branding, mode }),
       })
 
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Generation failed')
+      if (!res.body) throw new Error('No response body')
 
-      setGenerated(data)
-      router.push('/output')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const event = JSON.parse(line.slice(6))
+
+          if (event.type === 'done') {
+            setGenerated(event.output)
+            router.push('/output')
+          } else if (event.type === 'error') {
+            setGenerationError(event.message)
+            setIsGenerating(false)
+          }
+        }
+      }
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      setIsGenerating(false)
     }
   }
 

@@ -42,11 +42,29 @@ export default function OutputPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers, branding, mode }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Generation failed')
-      setGenerated(data)
+
+      if (!res.body) throw new Error('No response body')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const event = JSON.parse(line.slice(6))
+          if (event.type === 'done') setGenerated(event.output)
+          if (event.type === 'error') throw new Error(event.message)
+        }
+      }
     } catch (err) {
-      console.error('Regeneration error:', err)
       alert(err instanceof Error ? err.message : 'Failed to regenerate. Please try again.')
     } finally {
       setIsRegenerating(false)
