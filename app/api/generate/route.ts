@@ -13,11 +13,6 @@ function sseEvent(controller: ReadableStreamDefaultController, data: object) {
 const pitchDeckSchema = {
   type: SchemaType.OBJECT,
   properties: {
-    talkTrack: {
-      type: SchemaType.STRING,
-      description: '3-5 minute speaker script (450-750 words). Conversational, persuasive, founder-authentic tone.',
-      nullable: false,
-    },
     slides: {
       type: SchemaType.ARRAY,
       description: 'Exactly 12 slides in order: intro, problem, solution, product, market, businessModel, traction, competition, gtm, financials, team, ask',
@@ -34,29 +29,33 @@ const pitchDeckSchema = {
             description: 'Short, punchy slide title (4-8 words max)',
             nullable: false,
           },
-          bullets: {
-            type: SchemaType.ARRAY,
-            description: '3-5 bullet points. Slide competition must contain a markdown table. Slide financials must contain a markdown table: Year | Revenue | Costs | Profit.',
-            items: { type: SchemaType.STRING },
-          },
-          suggestedVisual: {
+          coreMessage: {
             type: SchemaType.STRING,
-            description: 'Specific visual element recommendation',
+            description: 'ONE clear sentence — the single most important investor takeaway from this slide. Make it memorable and specific.',
             nullable: false,
           },
-          designNotes: {
-            type: SchemaType.OBJECT,
-            properties: {
-              layout: { type: SchemaType.STRING, nullable: false },
-              colorUsage: { type: SchemaType.STRING, nullable: false },
-              fontHierarchy: { type: SchemaType.STRING, nullable: false },
-              logoPlacement: { type: SchemaType.STRING, nullable: false },
-              visualStyle: { type: SchemaType.STRING, nullable: false },
-            },
-            required: ['layout', 'colorUsage', 'fontHierarchy', 'logoPlacement', 'visualStyle'],
+          content: {
+            type: SchemaType.ARRAY,
+            description: '3-5 crisp bullet points (≤12 words each). competition slide MUST include a single-string markdown table with header row, separator row (---), and data rows. financials slide MUST include a single-string markdown table: Year | Revenue | Costs | Profit.',
+            items: { type: SchemaType.STRING },
+          },
+          visualSuggestion: {
+            type: SchemaType.STRING,
+            description: 'Specific, actionable visual: e.g. "Horizontal bar chart showing 3-year revenue growth" or "2x3 icon grid with feature names"',
+            nullable: false,
+          },
+          layoutSuggestion: {
+            type: SchemaType.STRING,
+            description: 'Canva layout guide: e.g. "Split layout — left 40% brand color with stat callouts, right 60% white with bullet list" or "Full-bleed hero image with text overlay"',
+            nullable: false,
+          },
+          talkTrack: {
+            type: SchemaType.STRING,
+            description: '30-60 second spoken script for this slide only. Conversational, founder-authentic. No filler. Start mid-sentence if needed.',
+            nullable: false,
           },
         },
-        required: ['id', 'title', 'bullets', 'suggestedVisual', 'designNotes'],
+        required: ['id', 'title', 'coreMessage', 'content', 'visualSuggestion', 'layoutSuggestion', 'talkTrack'],
       },
     },
     quickImprovements: {
@@ -70,7 +69,7 @@ const pitchDeckSchema = {
       items: { type: SchemaType.STRING },
     },
   },
-  required: ['talkTrack', 'slides', 'quickImprovements', 'coachNotes'],
+  required: ['slides', 'quickImprovements', 'coachNotes'],
 }
 
 function buildBrandingContext(branding: BrandingProfile): string {
@@ -106,57 +105,76 @@ function buildGenerationPrompt(
   const answerSummary = buildAnswerSummary(answers)
   const brandingContext = buildBrandingContext(branding)
   const companyName = answers.company_name || 'this company'
+  const hasMarketSize = !!(answers.market_size?.trim())
 
-  return `You are an expert startup pitch coach, investor relations advisor, and brand designer. Your task is to generate a world-class pitch deck and talk track for ${companyName}.
+  return `You are an expert startup pitch coach, investor relations advisor, and visual deck designer. Generate a world-class, investor-ready pitch deck for ${companyName}.
 
 ${brandingContext}
 
-MODE: ${mode === 'workshop' ? 'WORKSHOP (concise, high-impact, fast delivery)' : 'SOLO (detailed, thorough, investor-ready)'}
+MODE: ${mode === 'workshop' ? 'WORKSHOP — concise, high-impact, optimized for live delivery' : 'SOLO — detailed, thorough, optimized for cold investor sends'}
 
 FOUNDER ANSWERS:
-${answerSummary || 'No answers provided — generate a template-style pitch deck with placeholder content.'}
+${answerSummary || 'No answers provided — generate a compelling template-style pitch deck with realistic placeholder content.'}
 
-REQUIREMENTS FOR GENERATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GENERATION REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. TALK TRACK (3-5 min script):
-   - Write as the founder speaking directly to investors
-   - Tone must match the branding profile (${branding.tone || 'bold'})
-   - Flow naturally through all 12 slides
-   - Open with a hook. Close with a clear call to action.
-   - ${mode === 'workshop' ? 'Keep to 3 minutes max (≈400 words)' : 'Aim for 4-5 minutes (≈600-750 words)'}
+1. CANVA-FIRST OUTPUT RULES (apply to every slide):
+   - content bullets MUST be ≤12 words each — no full sentences, no filler
+   - coreMessage is the slide headline — make it punchy, specific, memorable
+   - visualSuggestion must be actionable: "Concentric circles: TAM $12B → SAM $2.1B → SOM $85M" not just "show market size"
+   - layoutSuggestion must guide Canva placement precisely: "Split — left 35% brand-color panel with large stat, right 65% white with 4 bullets"
 
-2. SLIDES (exactly 12):
-   - INTRO: Strong identity, tagline front-and-center
-   - PROBLEM: Lead with the pain. Use specific numbers if provided.
-   - SOLUTION: Clear differentiation. Not just what you do, but WHY it's better.
-   - PRODUCT: Tangible features. Make it feel real.
-   - MARKET: Show TAM/SAM/SOM as a clear progression. Include market data.
-   - BUSINESS MODEL: Clear monetization. Show revenue math.
-   - TRACTION: Lead with the best metric. If limited, show momentum.
-   - COMPETITION: MUST INCLUDE a comparison table (markdown format) with 3-4 dimensions.
-   - GTM: Specific channels. Show priority order and rationale.
-   - FINANCIALS: MUST INCLUDE a revenue table (Year | Revenue | Costs | Profit). Show path to breakeven.
-   - TEAM: Emphasize why this team is uniquely qualified to solve this problem.
-   - ASK: Specific funding amount, use of funds breakdown, key milestone this achieves.
+2. MARKET INTELLIGENCE — ALWAYS INFER IF NEEDED:
+${hasMarketSize
+    ? '   - User provided market size data above — use their numbers as the foundation'
+    : '   - No market size provided — INFER TAM/SAM/SOM using bottom-up methodology:'}
+   - Derive from: industry vertical + target customer count × estimated ACV + comparable company revenues
+   - Express as: TAM $XB, SAM $XM, SOM $XM
+   - Add one bullet showing the math: e.g. "~45K target companies × $600 ACV = $27M SOM"
+   - Market must feel credible and defensible — not hand-wavy
 
-3. DESIGN NOTES (for each slide):
-   - Be specific about layout, not generic
-   - Reference actual brand colors by hex code
-   - Describe exact font sizes and weights for headline vs body
-   - Specify logo placement (top-left corner, bottom-right watermark, etc.)
-   - Describe the visual mood/style this slide should convey
+3. INVESTOR INTELLIGENCE (apply to each slide):
+   - PROBLEM: quantify pain in $, hours, or outcomes lost — no vague claims
+   - SOLUTION: lead with differentiation ("Unlike X, we..."), not just description
+   - TRACTION: best metric first; if pre-revenue, show pilots, LOIs, waitlist, retention
+   - TEAM: answer "why THIS team for THIS problem?" — domain expertise + execution track record
+   - ASK: connect the ask directly to a specific milestone; show 18-month runway math
+   - Use urgency framing where genuine: market timing, regulatory tailwind, competitor gap
 
-4. QUICK IMPROVEMENTS:
-   - Identify missing data points that weaken the pitch
-   - Flag any slides where claims are unsupported
-   - Suggest specific questions the founder should be able to answer
+4. SLIDES (exactly 12 — in this order):
+   - INTRO: Company name + tagline as hero. coreMessage = the one-liner pitch.
+   - PROBLEM: Lead with the pain. Quantified, specific, urgent.
+   - SOLUTION: Clear differentiation. What you do AND why it's better.
+   - PRODUCT: Tangible features that solve the problem directly.
+   - MARKET: TAM → SAM → SOM with defensible sizing. Include the math.
+   - BUSINESS MODEL: Revenue streams + pricing model. Show unit economics.
+   - TRACTION: Best metric first. Show momentum trajectory.
+   - COMPETITION: MUST include a markdown comparison table (3-4 columns, 4-5 rows) embedded as a single content item.
+   - GTM: 3 specific acquisition channels in priority order with rationale.
+   - FINANCIALS: MUST include a markdown table (Year | Revenue | Costs | Profit) showing 3-year path to breakeven.
+   - TEAM: Why this team wins. Domain expertise + relevant track record.
+   - ASK: Funding amount + use of funds breakdown (% per category) + milestone this unlocks.
 
-5. COACH NOTES:
-   - Insights for workshop facilitators
-   - Questions to push the founder deeper
-   - Red flags investors will likely probe
+5. PER-SLIDE TALK TRACK (30-60 seconds each):
+   - Write as the founder speaking — conversational, not scripted-sounding
+   - Tone: ${branding.tone || 'bold'} — match the brand personality
+   - Open each slide with a hook or transition from prior slide
+   - End each slide with a bridge to what's coming next (except the last)
+   - ${mode === 'workshop' ? 'Keep each script ≤60 words (fast workshop pace)' : 'Target 80-100 words per slide (investor meeting pace)'}
 
-Generate the pitch deck now. Be specific, compelling, and investor-ready.`
+6. QUICK IMPROVEMENTS:
+   - Identify the 4-6 most impactful missing data points
+   - Flag vague or unsupported claims
+   - Note specific questions investors will ask that the current pitch can't answer
+
+7. COACH NOTES:
+   - 4-6 insights for workshop facilitators
+   - Red flags investors will probe
+   - Specific follow-up questions to push the founder deeper
+
+Generate the complete pitch deck now. Every slide must be specific, compelling, and investor-ready.`
 }
 
 export async function POST(req: Request) {
@@ -233,15 +251,11 @@ export async function POST(req: Request) {
               output.slides.push({
                 id: id as PitchDeckSlide['id'],
                 title: id.charAt(0).toUpperCase() + id.slice(1),
-                bullets: ['Content coming soon — please re-generate'],
-                suggestedVisual: 'Placeholder',
-                designNotes: {
-                  layout: 'Standard layout',
-                  colorUsage: 'Use brand primary color',
-                  fontHierarchy: 'Standard heading + body',
-                  logoPlacement: 'Top-left corner',
-                  visualStyle: 'Clean and minimal',
-                },
+                coreMessage: 'Content coming soon — please re-generate',
+                content: ['Re-generate to populate this slide'],
+                visualSuggestion: 'To be determined',
+                layoutSuggestion: 'Standard layout',
+                talkTrack: '',
               })
             }
           }

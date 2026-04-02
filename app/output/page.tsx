@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, Edit2, Zap, ChevronDown, ChevronUp, Layout, Save, Share2, Check, Loader2, User } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft, Edit2, Zap, ChevronDown, ChevronUp, Layout, Save, Share2, Check, Loader2, User, ExternalLink } from 'lucide-react'
 import { useStore, useGenerated, useBranding, useAnswers, useMode, useUserId, useSessionId } from '@/lib/store'
 import { SlideCard } from '@/components/SlideCard'
 import { TalkTrackPanel } from '@/components/TalkTrackPanel'
@@ -13,13 +13,14 @@ type OutputTab = 'deck' | 'talktrack'
 
 export default function OutputPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const generated = useGenerated()
   const branding = useBranding()
   const answers = useAnswers()
   const mode = useMode()
   const userId = useUserId()
   const sessionId = useSessionId()
-  const { setMode, setIsGenerating, setGenerated, setGenerationError, setSessionId } = useStore()
+  const { setMode, setGenerated, setSessionId } = useStore()
 
   const [activeTab, setActiveTab] = useState<OutputTab>('deck')
   const [allExpanded, setAllExpanded] = useState(true)
@@ -27,6 +28,11 @@ export default function OutputPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(sessionId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/decks/${sessionId}` : null)
   const [copied, setCopied] = useState(false)
+
+  // Canva state
+  const [canvaLoading, setCanvaLoading] = useState(false)
+  const [canvaError, setCanvaError] = useState<string | null>(null)
+  const canvaTriggered = useRef(false)
 
   const companyName = answers.company_name || 'Your Company'
 
@@ -37,7 +43,75 @@ export default function OutputPage() {
     }
   }, [generated, router])
 
+  // Handle return from Canva OAuth — auto-trigger import
+  useEffect(() => {
+    if (!generated) return
+    const canvaReady = searchParams.get('canva_ready')
+    const canvaErr = searchParams.get('error')
+
+    if (canvaErr) {
+      setCanvaError('Canva connection failed. Please try again.')
+      return
+    }
+
+    if (canvaReady === '1' && !canvaTriggered.current) {
+      canvaTriggered.current = true
+      importToCanva()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, generated])
+
   if (!generated) return null
+
+  const importToCanva = async () => {
+    setCanvaLoading(true)
+    setCanvaError(null)
+
+    try {
+      // Start the import job
+      const createRes = await fetch('/api/canva/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output: generated, branding, companyName }),
+      })
+
+      if (createRes.status === 401) {
+        // Token expired — re-authenticate
+        window.location.href = '/api/canva/auth'
+        return
+      }
+
+      if (!createRes.ok) throw new Error('Failed to start Canva import')
+
+      const { jobId } = await createRes.json()
+
+      // Poll for completion
+      let attempts = 0
+      while (attempts < 20) {
+        await new Promise(r => setTimeout(r, 1500))
+        const statusRes = await fetch(`/api/canva/status?jobId=${jobId}`)
+        const { status, url } = await statusRes.json()
+
+        if (status === 'success' && url) {
+          window.open(url, '_blank')
+          setCanvaLoading(false)
+          return
+        }
+        if (status === 'failed') throw new Error('Canva import failed')
+        attempts++
+      }
+
+      throw new Error('Canva import timed out — please try again')
+    } catch (err) {
+      setCanvaError(err instanceof Error ? err.message : 'Something went wrong')
+      setCanvaLoading(false)
+    }
+  }
+
+  const handleOpenInCanva = () => {
+    setCanvaError(null)
+    window.location.href = '/api/canva/auth'
+  }
 
   const handleSave = async () => {
     if (!userId) {
@@ -206,6 +280,15 @@ export default function OutputPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Canva error banner */}
+        {canvaError && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700">
+            <span>⚠️</span>
+            <span>{canvaError}</span>
+            <button onClick={() => setCanvaError(null)} className="ml-auto text-red-400 hover:text-red-600">✕</button>
+          </div>
+        )}
+
         {/* Header row */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
@@ -225,6 +308,19 @@ export default function OutputPage() {
               branding={branding}
               companyName={companyName}
             />
+            {/* Open in Canva */}
+            <button
+              onClick={handleOpenInCanva}
+              disabled={canvaLoading}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-medium text-sm bg-[#7D2AE8] hover:bg-[#6B24CC] text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {canvaLoading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <ExternalLink size={14} />
+              )}
+              {canvaLoading ? 'Opening Canva...' : 'Open in Canva'}
+            </button>
             <button
               onClick={handleRegenerate}
               disabled={isRegenerating}
@@ -320,6 +416,7 @@ export default function OutputPage() {
         {activeTab === 'talktrack' && (
           <TalkTrackPanel
             talkTrack={generated.talkTrack}
+            slides={generated.slides}
             quickImprovements={generated.quickImprovements}
             coachNotes={generated.coachNotes}
           />
@@ -327,7 +424,7 @@ export default function OutputPage() {
 
         {/* Footer */}
         <div className="mt-10 pt-6 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm text-gray-400">
-          <p>Generated with Claude AI • PitchDeck Generator</p>
+          <p>Generated with Gemini AI • PitchDeck Generator</p>
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push('/questionnaire')}

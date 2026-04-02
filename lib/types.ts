@@ -62,15 +62,22 @@ export interface DesignNotes {
 export interface PitchDeckSlide {
   id: SlideId
   title: string
-  bullets: string[]
-  suggestedVisual: string
-  designNotes: DesignNotes
+  // New schema fields (Intelligence Override)
+  coreMessage?: string        // one clear sentence — the key investor takeaway
+  content?: string[]          // primary bullet array (replaces bullets)
+  visualSuggestion?: string   // specific visual element recommendation
+  layoutSuggestion?: string   // Canva layout guidance
+  talkTrack?: string          // 30-60 second per-slide script
+  // Legacy / backward-compat fields
+  bullets?: string[]
+  suggestedVisual?: string
+  designNotes?: DesignNotes
 }
 
 // ─── Generated Output ────────────────────────────────────────────────────────
 
 export interface GeneratedOutput {
-  talkTrack: string
+  talkTrack?: string          // optional — per-slide talkTrack is now preferred
   slides: PitchDeckSlide[]
   quickImprovements: string[]
   coachNotes: string[]

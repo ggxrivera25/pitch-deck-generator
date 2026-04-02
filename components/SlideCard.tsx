@@ -130,7 +130,7 @@ interface BodyProps {
 // ── Slide body components ──────────────────────────────────────────────────
 
 function IntroBody({ slide, primary, secondary, onPrimary, logo, companyName }: BodyProps) {
-  const sub = slide.bullets[0] || slide.title
+  const sub = slide.coreMessage || (slide.content ?? slide.bullets ?? [])[0] || slide.title
   return (
     <div
       className="flex flex-col items-center justify-center h-full px-6 py-4 text-center gap-2"
@@ -149,13 +149,14 @@ function IntroBody({ slide, primary, secondary, onPrimary, logo, companyName }: 
 }
 
 function BulletBody({ slide, primary }: BodyProps) {
+  const bullets = slide.content ?? slide.bullets ?? []
   const isProb = slide.id === 'problem'
   const isSol = slide.id === 'solution'
   const accent = isProb ? '#ef4444' : isSol ? '#10b981' : primary
   const bg = isProb ? '#fef2f2' : isSol ? '#f0fdf4' : `${primary}0D`
   return (
     <ul className="p-3 space-y-1.5 h-full overflow-hidden">
-      {slide.bullets.slice(0, 4).map((b, i) => (
+      {bullets.slice(0, 4).map((b, i) => (
         <li key={i} className="flex items-start gap-2 rounded-lg p-2 text-[11px] leading-snug" style={{ backgroundColor: bg }}>
           <span
             className="mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-white"
@@ -169,7 +170,8 @@ function BulletBody({ slide, primary }: BodyProps) {
 }
 
 function MarketBody({ slide, primary, secondary, accent }: BodyProps) {
-  const sizes = parseMarketSizes(slide.bullets)
+  const bullets = slide.content ?? slide.bullets ?? []
+  const sizes = parseMarketSizes(bullets)
   if (sizes.length < 2) return <BulletBody {...{ slide, primary, secondary, accent, onPrimary: '#fff', logo: null, companyName: '' }} />
 
   const [tam, sam, som] = ['TAM', 'SAM', 'SOM'].map(l => sizes.find(s => s.label === l))
@@ -204,7 +206,8 @@ function MarketBody({ slide, primary, secondary, accent }: BodyProps) {
 }
 
 function TractionBody({ slide, primary }: BodyProps) {
-  const metrics = slide.bullets.slice(0, 4).map(b => {
+  const bullets = slide.content ?? slide.bullets ?? []
+  const metrics = bullets.slice(0, 4).map(b => {
     const m = b.match(/^([^:]+?):\s*([^\s,.(]{1,25})/)
     if (m) return { label: m[1].trim(), value: m[2].trim() }
     const num = b.match(/(\$[\d,.]+[BMKk]?|\d[\d,.]+[%x+]?|\d{4,}[+]?)/)
@@ -227,7 +230,8 @@ function TractionBody({ slide, primary }: BodyProps) {
 }
 
 function CompetitionBody({ slide, primary }: BodyProps) {
-  const table = parseMarkdownTable(slide.bullets)
+  const bullets = slide.content ?? slide.bullets ?? []
+  const table = parseMarkdownTable(bullets)
   if (!table) return <BulletBody {...{ slide, primary, secondary: primary, accent: primary, onPrimary: '#fff', logo: null, companyName: '' }} />
   return (
     <div className="p-2 h-full overflow-auto">
@@ -258,7 +262,8 @@ function CompetitionBody({ slide, primary }: BodyProps) {
 }
 
 function FinancialsBody({ slide, primary, secondary, accent }: BodyProps) {
-  const table = parseMarkdownTable(slide.bullets)
+  const bullets = slide.content ?? slide.bullets ?? []
+  const table = parseMarkdownTable(bullets)
   if (!table) return <BulletBody {...{ slide, primary, secondary, accent, onPrimary: '#fff', logo: null, companyName: '' }} />
   const chartData = table.rows.map(r => ({ label: r[0] || '', raw: r[1] || '0' }))
   return (
@@ -287,8 +292,9 @@ function FinancialsBody({ slide, primary, secondary, accent }: BodyProps) {
 }
 
 function AskBody({ slide, primary, secondary, accent }: BodyProps) {
-  const funds = parseUseOfFunds(slide.bullets).filter(f => f.pct > 0).slice(0, 5)
-  const amount = extractFundingAmount(slide.bullets)
+  const bullets = slide.content ?? slide.bullets ?? []
+  const funds = parseUseOfFunds(bullets).filter(f => f.pct > 0).slice(0, 5)
+  const amount = extractFundingAmount(bullets)
   const colors = [primary, secondary, accent, '#f59e0b', '#10b981']
 
   return (
@@ -314,7 +320,7 @@ function AskBody({ slide, primary, secondary, accent }: BodyProps) {
         </div>
       ) : (
         <ul className="flex-1 space-y-1">
-          {slide.bullets.slice(0, 3).map((b, i) => (
+          {bullets.slice(0, 3).map((b, i) => (
             <li key={i} className="flex items-start gap-1.5 text-[10px] text-gray-700">
               <span className="w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: primary }} />
               {b}
@@ -327,7 +333,8 @@ function AskBody({ slide, primary, secondary, accent }: BodyProps) {
 }
 
 function TeamBody({ slide, primary }: BodyProps) {
-  const members = slide.bullets.slice(0, 4).map(b => {
+  const bullets = slide.content ?? slide.bullets ?? []
+  const members = bullets.slice(0, 4).map(b => {
     const m = b.match(/^([^,:\n]+)[,:\s–-]+\s*(.{3,50})/)
     return m
       ? { name: m[1].trim(), role: m[2].trim().split(/[.,]/)[0].slice(0, 36) }
@@ -351,9 +358,10 @@ function TeamBody({ slide, primary }: BodyProps) {
 }
 
 function GTMBody({ slide, primary }: BodyProps) {
+  const bullets = slide.content ?? slide.bullets ?? []
   return (
     <div className="p-3 h-full flex flex-col gap-1.5 justify-center">
-      {slide.bullets.slice(0, 3).map((b, i) => (
+      {bullets.slice(0, 3).map((b, i) => (
         <div key={i} className="flex items-start gap-2">
           <div className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 text-[9px] font-black text-white" style={{ backgroundColor: primary }}>
             {i + 1}
@@ -368,9 +376,10 @@ function GTMBody({ slide, primary }: BodyProps) {
 }
 
 function BizModelBody({ slide, primary }: BodyProps) {
+  const bullets = slide.content ?? slide.bullets ?? []
   return (
     <div className="p-3 h-full flex flex-col gap-1.5 justify-center">
-      {slide.bullets.slice(0, 4).map((b, i) => {
+      {bullets.slice(0, 4).map((b, i) => {
         const m = b.match(/^([^:]+):\s*(.+)/)
         return (
           <div key={i} className="flex items-start gap-2 rounded-lg p-2" style={{ backgroundColor: `${primary}0D` }}>
@@ -471,23 +480,49 @@ export function SlideCard({ slide, index, branding, isExpanded = false, companyN
 
       {showDetails && (
         <div className="px-3 pb-3 space-y-2 border-t border-gray-50">
-          <div className="p-2 bg-sky-50 rounded-lg mt-2">
-            <p className="text-[9px] font-semibold text-sky-600 mb-0.5">Suggested Visual</p>
-            <p className="text-[10px] text-sky-700 leading-snug">{slide.suggestedVisual}</p>
-          </div>
-          <div className="p-2 rounded-lg space-y-1.5" style={{ backgroundColor: `${primary}08` }}>
-            {[
-              ['Layout', slide.designNotes.layout],
-              ['Colors', slide.designNotes.colorUsage],
-              ['Fonts', slide.designNotes.fontHierarchy],
-              ['Logo', slide.designNotes.logoPlacement],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}: </span>
-                <span className="text-[10px] text-gray-600">{value}</span>
-              </div>
-            ))}
-          </div>
+          {/* Core Message */}
+          {slide.coreMessage && (
+            <div className="p-2 bg-violet-50 rounded-lg mt-2">
+              <p className="text-[9px] font-semibold text-violet-600 mb-0.5">Core Message</p>
+              <p className="text-[10px] text-violet-800 leading-snug font-medium">{slide.coreMessage}</p>
+            </div>
+          )}
+          {/* Visual & Layout suggestions */}
+          {(slide.visualSuggestion || slide.suggestedVisual) && (
+            <div className="p-2 bg-sky-50 rounded-lg">
+              <p className="text-[9px] font-semibold text-sky-600 mb-0.5">Visual</p>
+              <p className="text-[10px] text-sky-700 leading-snug">{slide.visualSuggestion || slide.suggestedVisual}</p>
+            </div>
+          )}
+          {slide.layoutSuggestion && (
+            <div className="p-2 bg-emerald-50 rounded-lg">
+              <p className="text-[9px] font-semibold text-emerald-600 mb-0.5">Layout (Canva)</p>
+              <p className="text-[10px] text-emerald-700 leading-snug">{slide.layoutSuggestion}</p>
+            </div>
+          )}
+          {/* Per-slide talk track */}
+          {slide.talkTrack && (
+            <div className="p-2 rounded-lg" style={{ backgroundColor: `${primary}08` }}>
+              <p className="text-[9px] font-semibold mb-0.5" style={{ color: primary }}>Talk Track (30-60s)</p>
+              <p className="text-[10px] text-gray-600 leading-snug">{slide.talkTrack}</p>
+            </div>
+          )}
+          {/* Legacy design notes */}
+          {slide.designNotes && (
+            <div className="p-2 rounded-lg space-y-1.5 bg-gray-50">
+              {[
+                ['Layout', slide.designNotes.layout],
+                ['Colors', slide.designNotes.colorUsage],
+                ['Fonts', slide.designNotes.fontHierarchy],
+                ['Logo', slide.designNotes.logoPlacement],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}: </span>
+                  <span className="text-[10px] text-gray-600">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -516,7 +551,7 @@ export function SlidePreview({
         <span className="text-xs font-medium truncate" style={{ color: onPrimary }}>{slide.title}</span>
       </div>
       <div className="px-3 py-2">
-        <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{slide.bullets[0]}</p>
+        <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{(slide.content ?? slide.bullets ?? [])[0]}</p>
       </div>
     </button>
   )
