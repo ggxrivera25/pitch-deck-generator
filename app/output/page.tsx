@@ -128,28 +128,55 @@ function OutputPageInner() {
     const primary = branding.colors[0] || '#7C3AED'
     const font = branding.fonts[0] || 'Inter'
 
+    // CT SBDC exact slide labels and descriptions
+    const SLIDE_SPEC: Record<string, { label: string; description: string }> = {
+      intro:         { label: 'Intro',                 description: 'Company name, slogan, and founder(s)' },
+      problem:       { label: 'Problem',               description: 'What is the problem you are trying to solve?' },
+      solution:      { label: 'Solution',              description: 'Describe your product/service/solution' },
+      product:       { label: 'Product',               description: 'Key product highlights (optional)' },
+      market:        { label: 'Market Size',           description: 'TAM / SAM / SOM with supporting data' },
+      businessModel: { label: 'Business Model',        description: 'Describe how you make money' },
+      traction:      { label: 'Traction',              description: 'What have you done so far? Highlight major milestones' },
+      competition:   { label: 'Competition',           description: 'Who do you compete with? Include a comparison chart showing your core differentiators' },
+      gtm:           { label: 'Go to Market Strategy', description: 'Path to market — channels, strategy, timeline' },
+      financials:    { label: 'Financials',            description: '3-year sales projections and breakeven point' },
+      team:          { label: 'Team',                  description: 'Core team members plus consultants and advisors' },
+      ask:           { label: 'Ask',                   description: 'What are you looking for? Capital amount, advice, partnerships?' },
+    }
+
     const slideLines = generated.slides.map((slide, i) => {
-      const bullets = (slide.content ?? slide.bullets ?? []).join(' | ')
+      const spec = SLIDE_SPEC[slide.id] || { label: slide.title, description: '' }
+      const bullets = (slide.content ?? slide.bullets ?? []).join('\n  • ')
       return [
-        `Slide ${i + 1} — ${slide.title}`,
-        slide.coreMessage ? `Core message: ${slide.coreMessage}` : '',
-        bullets ? `Content: ${bullets}` : '',
-        slide.visualSuggestion ? `Visual: ${slide.visualSuggestion}` : '',
+        `SLIDE ${i + 1}: ${spec.label}`,
+        `Purpose: ${spec.description}`,
+        slide.coreMessage ? `Key message: ${slide.coreMessage}` : '',
+        bullets ? `Content:\n  • ${bullets}` : '',
+        slide.visualSuggestion ? `Visual direction: ${slide.visualSuggestion}` : '',
         slide.layoutSuggestion ? `Layout: ${slide.layoutSuggestion}` : '',
       ].filter(Boolean).join('\n')
-    }).join('\n\n')
+    }).join('\n\n---\n\n')
 
-    const prompt = `Create a professional 12-slide investor pitch deck presentation for ${companyName}.
+    const prompt = `Create a professional 12-slide investor and grant-ready pitch deck for ${companyName}.
 
-Brand color: ${primary}
+BRAND
+Color: ${primary}
 Font: ${font}
-Style: Clean, modern, minimal text — designed for investors and grant reviewers.
-Each slide should have a relevant visual or graphic based on the visual direction provided.
-Keep bullet text concise — no more than 10 words per bullet.
+Style: Clean, modern, minimal — built for investors and grant reviewers. No clutter.
 
+DESIGN RULES
+- Keep all bullet text under 10 words per line
+- Every slide must include a relevant visual, chart, or graphic
+- Use the brand color for headers, accents, and key stats
+- Competition slide MUST include a comparison chart/table showing differentiators
+- Financials slide MUST include a 3-year projection chart with breakeven highlighted
+- Market Size slide MUST show TAM > SAM > SOM visually (concentric circles or bar chart)
+- Consistent typography and layout across all slides
+
+SLIDES
 ${slideLines}
 
-Make it visually compelling. Use the brand color for headers and accents. Apply consistent typography throughout.`
+Follow the CT SBDC pitch deck format exactly. Make it visually compelling and investor-ready.`
 
     navigator.clipboard.writeText(prompt)
     setCanvaPromptCopied(true)
