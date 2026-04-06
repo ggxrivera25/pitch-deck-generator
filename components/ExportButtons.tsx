@@ -85,7 +85,7 @@ export function ExportButtons({ output, branding, companyName }: ExportButtonsPr
 
       // Slide pages
       output.slides.forEach((slide, i) => {
-        addSlide(slide.title, slide.bullets, i + 1, output.slides.length)
+        addSlide(slide.title, slide.content ?? slide.bullets ?? [], i + 1, output.slides.length)
       })
 
       // Talk Track page
@@ -182,7 +182,7 @@ export function ExportButtons({ output, branding, companyName }: ExportButtonsPr
         })
 
         // Bullets
-        const bulletPoints = slide.bullets
+        const bulletPoints = (slide.content ?? slide.bullets ?? [])
           .filter(b => !b.startsWith('|') && !b.includes('---'))
           .map(b => ({ text: b, options: { bullet: { type: 'bullet' as const } } }))
 
@@ -292,7 +292,7 @@ function buildTextExport(output: GeneratedOutput, companyName: string): string {
     lines.push('')
     lines.push(`SLIDE ${i + 1}: ${slide.title} (${SLIDE_NAMES[slide.id] || slide.id})`)
     lines.push('')
-    slide.bullets.forEach(bullet => lines.push(`• ${bullet}`))
+    ;(slide.content ?? slide.bullets ?? []).forEach(bullet => lines.push(`• ${bullet}`))
     lines.push('')
     lines.push(`Visual: ${slide.suggestedVisual}`)
     lines.push('')
