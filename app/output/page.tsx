@@ -123,79 +123,56 @@ function OutputPageInner() {
     window.location.href = '/api/canva/auth'
   }
 
-  const buildCanvaSlideBlock = (slide: PitchDeckSlide, i: number) => {
-    const SLIDE_SPEC: Record<string, { label: string; description: string }> = {
-      intro:         { label: 'Intro',                 description: 'Company name, slogan, and founder(s)' },
-      problem:       { label: 'Problem',               description: 'What is the problem you are trying to solve?' },
-      solution:      { label: 'Solution',              description: 'Describe your product/service/solution' },
-      product:       { label: 'Product',               description: 'Key product highlights (optional)' },
-      market:        { label: 'Market Size',           description: 'TAM / SAM / SOM with supporting data' },
-      businessModel: { label: 'Business Model',        description: 'Describe how you make money' },
-      traction:      { label: 'Traction',              description: 'What have you done so far? Highlight major milestones' },
-      competition:   { label: 'Competition',           description: 'Who do you compete with? Include a comparison chart showing your core differentiators' },
-      gtm:           { label: 'Go to Market Strategy', description: 'Path to market — channels, strategy, timeline' },
-      financials:    { label: 'Financials',            description: '3-year sales projections and breakeven point' },
-      team:          { label: 'Team',                  description: 'Core team members plus consultants and advisors' },
-      ask:           { label: 'Ask',                   description: 'What are you looking for? Capital amount, advice, partnerships?' },
-    }
-    const spec = SLIDE_SPEC[slide.id] || { label: slide.title, description: '' }
-    const bullets = (slide.content ?? slide.bullets ?? []).join('\n  • ')
-    return [
-      `SLIDE ${i + 1}: ${spec.label}`,
-      `Purpose: ${spec.description}`,
-      slide.coreMessage ? `Key message: ${slide.coreMessage}` : '',
-      bullets ? `Content:\n  • ${bullets}` : '',
-      slide.visualSuggestion ? `Visual: ${slide.visualSuggestion}` : '',
-      slide.layoutSuggestion ? `Layout: ${slide.layoutSuggestion}` : '',
-    ].filter(Boolean).join('\n')
+  const SLIDE_LABELS: Record<string, string> = {
+    intro: 'Intro', problem: 'Problem', solution: 'Solution',
+    product: 'Product', market: 'Market Size', businessModel: 'Business Model',
+    traction: 'Traction', competition: 'Competition', gtm: 'Go to Market Strategy',
+    financials: 'Financials', team: 'Team', ask: 'Ask',
   }
 
-  const truncateTo4k = (text: string) =>
-    text.length <= 4000 ? text : text.slice(0, 3997) + '...'
+  const buildCompactSlideBlock = (slide: PitchDeckSlide, i: number): string => {
+    const label = SLIDE_LABELS[slide.id] || slide.title
+    // Truncate message to 90 chars
+    const msg = (slide.coreMessage || '').slice(0, 90)
+    // Max 4 bullets, each max 10 words
+    const bullets = (slide.content ?? slide.bullets ?? [])
+      .slice(0, 4)
+      .map(b => b.split(' ').slice(0, 10).join(' '))
+      .join('\n• ')
+    // Visual max 70 chars
+    const visual = (slide.visualSuggestion || slide.suggestedVisual || '').slice(0, 70)
+    return [
+      `[${i + 1}] ${label}`,
+      msg ? `"${msg}"` : '',
+      bullets ? `• ${bullets}` : '',
+      visual ? `Visual: ${visual}` : '',
+    ].filter(Boolean).join('\n')
+  }
 
   const handleCopyCanvaPrompt = (part: 1 | 2) => {
     if (!generated) return
     const primary = branding.colors[0] || '#7C3AED'
     const font = branding.fonts[0] || 'Inter'
+    const LIMIT = 3800
 
     const slides = generated.slides
     const half = Math.ceil(slides.length / 2)
     const chunk = part === 1 ? slides.slice(0, half) : slides.slice(half)
     const startIdx = part === 1 ? 0 : half
 
-    const slideLines = chunk
-      .map((slide, i) => buildCanvaSlideBlock(slide, startIdx + i))
-      .join('\n\n---\n\n')
+    const header = part === 1
+      ? `Investor pitch deck for ${companyName} — Part 1 (slides 1-${half}).\nColor: ${primary} | Font: ${font} | Style: clean, minimal, investor-ready.\nRules: max 10 words/bullet, every slide needs a visual, brand color on headers.\nMarket Size: TAM→SAM→SOM concentric circles. Competition: comparison chart required.\n\n`
+      : `Continue the pitch deck for ${companyName} — Part 2 (slides ${half + 1}-${slides.length}).\nSame brand: ${primary}, ${font}. Keep consistent style from Part 1.\nFinancials: 3-year chart with breakeven. Ask: state capital amount and use of funds.\n\n`
 
-    const prompt = part === 1
-      ? truncateTo4k(`Create a professional investor and grant-ready pitch deck for ${companyName}. This is Part 1 of 2 — slides 1-${half}.
+    // Add slides one at a time — stop before exceeding limit (never cut mid-slide)
+    let prompt = header
+    for (let i = 0; i < chunk.length; i++) {
+      const block = buildCompactSlideBlock(chunk[i], startIdx + i) + '\n\n'
+      if ((prompt + block).length > LIMIT) break
+      prompt += block
+    }
 
-BRAND
-Color: ${primary} | Font: ${font}
-Style: Clean, modern, minimal. For investors and grant reviewers.
-
-DESIGN RULES
-- Bullet text max 10 words per line
-- Every slide needs a visual, chart, or graphic
-- Use brand color for headers and accents
-- Market Size: show TAM > SAM > SOM visually (concentric circles)
-- Competition: include a comparison chart/table
-
-${slideLines}
-
-After generating these slides, wait for Part 2 before finalizing the deck.`)
-      : truncateTo4k(`Continue the pitch deck for ${companyName}. This is Part 2 of 2 — slides ${half + 1}-${slides.length}. Keep the same brand colors (${primary}), font (${font}), and design style from Part 1.
-
-DESIGN RULES (same as Part 1)
-- Bullet text max 10 words per line
-- Every slide needs a visual or chart
-- Financials: include a 3-year projection chart with breakeven highlighted
-- Ask: be specific about capital amount and use of funds
-
-${slideLines}
-
-Follow the CT SBDC pitch deck format. Make it visually compelling and investor-ready.`)
-
+    prompt = prompt.trimEnd()
     navigator.clipboard.writeText(prompt)
     setCanvaPromptCopied(part)
     setTimeout(() => setCanvaPromptCopied(null), 2500)
