@@ -40,6 +40,7 @@ function OutputPageInner() {
   // Canva state
   const [canvaLoading, setCanvaLoading] = useState(false)
   const [canvaError, setCanvaError] = useState<string | null>(null)
+  const [canvaPromptCopied, setCanvaPromptCopied] = useState(false)
   const canvaTriggered = useRef(false)
 
   const companyName = answers.company_name || 'Your Company'
@@ -119,6 +120,40 @@ function OutputPageInner() {
   const handleOpenInCanva = () => {
     setCanvaError(null)
     window.location.href = '/api/canva/auth'
+  }
+
+  const handleCopyCanvaPrompt = () => {
+    if (!generated) return
+
+    const primary = branding.colors[0] || '#7C3AED'
+    const font = branding.fonts[0] || 'Inter'
+
+    const slideLines = generated.slides.map((slide, i) => {
+      const bullets = (slide.content ?? slide.bullets ?? []).join(' | ')
+      return [
+        `Slide ${i + 1} — ${slide.title}`,
+        slide.coreMessage ? `Core message: ${slide.coreMessage}` : '',
+        bullets ? `Content: ${bullets}` : '',
+        slide.visualSuggestion ? `Visual: ${slide.visualSuggestion}` : '',
+        slide.layoutSuggestion ? `Layout: ${slide.layoutSuggestion}` : '',
+      ].filter(Boolean).join('\n')
+    }).join('\n\n')
+
+    const prompt = `Create a professional 12-slide investor pitch deck presentation for ${companyName}.
+
+Brand color: ${primary}
+Font: ${font}
+Style: Clean, modern, minimal text — designed for investors and grant reviewers.
+Each slide should have a relevant visual or graphic based on the visual direction provided.
+Keep bullet text concise — no more than 10 words per bullet.
+
+${slideLines}
+
+Make it visually compelling. Use the brand color for headers and accents. Apply consistent typography throughout.`
+
+    navigator.clipboard.writeText(prompt)
+    setCanvaPromptCopied(true)
+    setTimeout(() => setCanvaPromptCopied(false), 2500)
   }
 
   const handleSave = async () => {
@@ -316,6 +351,14 @@ function OutputPageInner() {
               branding={branding}
               companyName={companyName}
             />
+            {/* Copy Canva Prompt */}
+            <button
+              onClick={handleCopyCanvaPrompt}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-medium text-sm border border-[#7D2AE8] text-[#7D2AE8] hover:bg-purple-50 transition-all"
+            >
+              {canvaPromptCopied ? <Check size={14} /> : <ExternalLink size={14} />}
+              {canvaPromptCopied ? 'Copied!' : 'Copy Canva Prompt'}
+            </button>
             {/* Open in Canva */}
             <button
               onClick={handleOpenInCanva}
