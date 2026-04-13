@@ -10,16 +10,28 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#F5F3FF',
-          100: '#EDE9FE',
-          200: '#DDD6FE',
-          300: '#C4B5FD',
-          400: '#A78BFA',
-          500: '#8B5CF6',
-          600: '#7C3AED',
-          700: '#6D28D9',
-          800: '#5B21B6',
-          900: '#1E1B4B',
+          50:  '#ecf4fe',  // light blue bg
+          100: '#f1f3f8',  // light gray bg
+          200: '#b0b6bb',  // border gray
+          300: '#869ab1',  // muted text
+          400: '#3075a6',  // mid blue
+          500: '#1f4a6a',  // dark mid blue
+          600: '#002d62',  // primary navy
+          700: '#08193c',  // darker navy
+          800: '#000e2f',  // darkest navy
+          900: '#000000',  // black
+        },
+        accent: {
+          DEFAULT: '#d11242',
+          light:   '#f5463b',
+        },
+        ui: {
+          border:     '#dddddd',
+          borderDark: '#cccccc',
+          borderBlue: '#0078c1',
+          muted:      '#aaaaaa',
+          subtle:     '#949494',
+          link:       '#3075a6',
         },
       },
       fontFamily: {
